@@ -13,7 +13,7 @@ graph LR
     Input[Input File] --> Lexer
     Lexer[Lexer (Flex/C)] --> Parser
     Parser[Parser (Bison/C)] --> Incomplete[Incomplete Entries]
-    Incomplete --> Booking[Booking Logic (Python)]
+    Incomplete -->|loader| Booking[Booking Logic (Python)]
     Booking --> Complete[Complete Entries]
 ```
 
@@ -26,7 +26,7 @@ graph LR
 ## Key Modules
 
 ### Core Parsing
-*   **`parser.py`**: The main public interface for the package. It provides functions like `parse_file` and `parse_string` which coordinate the C parser and the booking process.
+*   **`parser.py`**: Provides `parse_file` and `parse_string`, which call the C parser and return directives that may contain `MISSING` values. They do not perform booking. Use `beancount.loader.load_file` or `load_string` to load and book entries.
 *   **`grammar.y`**: The Bison grammar file defining the syntax of the Beancount language.
 *   **`lexer.l`**: The Flex lexer file defining the tokens (keywords, numbers, strings).
 *   **`_parser.pyi`**: Type stub for the compiled C extension module.

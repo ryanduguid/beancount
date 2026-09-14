@@ -86,7 +86,7 @@ WHERE list_contains(tags, 'vacation') OR list_contains(tags, 'trip');
 Find any mentions of "amazon" or "google" regardless of case.
 ```sql
 SELECT * FROM bnj()
-WHERE narration ~* 'amazon|google';
+WHERE regexp_matches(narration, 'amazon|google', 'i');
 ```
 
 ### In-place Replacement
@@ -119,13 +119,14 @@ FROM postings
 WHERE pos.cost.number > 500;
 ```
 
-### Unrealized Gain Calculation (Manual)
-Compare the current weight (value at cost) vs units.
+### Holdings and total cost
+Show holdings and their total cost by account. This query does not calculate
+unrealised gains because it does not compare the holdings with market prices.
 ```sql
 SELECT
     account,
     bnstr(bnsum(pos)) as holdings,
-    bnstr(bnsum(weight)) as total_cost
+    bnstr(bnsum(bnpos(weight.number, weight.currency, NULL, NULL, NULL, NULL))) as total_cost
 FROM postings
 WHERE pos.cost IS NOT NULL
 GROUP BY account;

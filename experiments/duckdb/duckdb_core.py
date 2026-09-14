@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime
 import json
+from decimal import Context
 from decimal import Decimal
 from typing import Any
 
@@ -19,6 +20,9 @@ from beancount.core.amount import Amount
 from beancount.core.inventory import Inventory
 from beancount.core.position import Cost
 from beancount.core.position import Position
+
+# Match the SQL decimal precision when removing trailing zeros for display.
+_DECIMAL_DISPLAY_CONTEXT = Context(prec=38)
 
 POSITION_SQL_TYPE = (
     "STRUCT("
@@ -138,7 +142,7 @@ def _bn_str_udf(value: str | None) -> str | None:
 
     result = str(value)
     try:
-        data = json.loads(value)
+        data = json.loads(value, parse_float=Decimal)
         if isinstance(data, dict):
             # Dispatch based on the JSON keys
             if "positions" in data:
@@ -151,11 +155,11 @@ def _bn_str_udf(value: str | None) -> str | None:
                     if pos.get("units") and pos["units"].get("number") is not None:
                         pos["units"]["number"] = Decimal(
                             str(pos["units"]["number"])
-                        ).normalize()
+                        ).normalize(context=_DECIMAL_DISPLAY_CONTEXT)
                     if pos.get("cost") and pos["cost"].get("number") is not None:
                         pos["cost"]["number"] = Decimal(
                             str(pos["cost"]["number"])
-                        ).normalize()
+                        ).normalize(context=_DECIMAL_DISPLAY_CONTEXT)
                 result = inventory_from_dict(data).to_string()
             elif "units" in data:
                 # It's a Position
@@ -164,17 +168,22 @@ def _bn_str_udf(value: str | None) -> str | None:
                 if data.get("units") and data["units"].get("number") is not None:
                     data["units"]["number"] = Decimal(
                         str(data["units"]["number"])
-                    ).normalize()
+                    ).normalize(context=_DECIMAL_DISPLAY_CONTEXT)
                 if data.get("cost") and data["cost"].get("number") is not None:
-                    data["cost"]["number"] = Decimal(
-                        str(data["cost"]["number"])
-                    ).normalize()
+                    data["cost"]["number"] = Decimal(str(data["cost"]["number"])).normalize(
+                        context=_DECIMAL_DISPLAY_CONTEXT
+                    )
                 pos = position_from_dict(data)
                 if pos:
                     result = pos.to_string()
             elif "number" in data and "currency" in data:
                 # It's an Amount
-                amt = Amount(Decimal(str(data["number"])).normalize(), data["currency"])
+                amt = Amount(
+                    Decimal(str(data["number"])).normalize(
+                        context=_DECIMAL_DISPLAY_CONTEXT
+                    ),
+                    data["currency"],
+                )
                 result = amt.to_string()
     except (json.JSONDecodeError, ValueError):
         pass

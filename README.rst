@@ -18,9 +18,10 @@
 Description
 ===========
 
-A double-entry bookkeeping computer language that lets you define financial
-transaction records in a text file, read them in memory, generate a variety of
-reports from them, and provides a web interface.
+A double-entry bookkeeping language for recording financial transactions in
+text files. The core package parses, validates and loads those records. In
+version 3, query clients, web interfaces and import tools are installed
+separately.
 
 
 Documentation
