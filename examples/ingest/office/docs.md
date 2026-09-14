@@ -16,8 +16,8 @@ The main goal is to separate test data from implementation code. By storing "gol
 The example uses specific file extensions to represent different stages of the ingestion testing process:
 
 *   **`.extract` Files** (e.g., `acmebank1.pdf.extract`)
-    *   **Content:** The raw text content extracted from a source document (like a PDF).
-    *   **Usage:** Used to verify that the underlying text extraction libraries and logic are performing consistently. Comparing new extraction results against this file detects changes in how text is parsed.
+    *   **Content:** The expected Beancount directives returned by the importer and rendered as text.
+    *   **Usage:** The version 2 ingestion regression harness compares the rendered accounting entries with this file. Raw PDF text is a separate intermediate result.
 
 *   **`.file_account` Files** (e.g., `acmebank1.pdf.file_account`)
     *   **Content:** The target Beancount account name (e.g., `Assets:US:AcmeBank`).

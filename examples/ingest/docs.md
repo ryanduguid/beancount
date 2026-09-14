@@ -19,8 +19,8 @@ The directory is organized hierarchically to mirror the structure of potential i
 The examples utilize specific file extensions to represent different stages of the ingestion testing process:
 
 *   **`.extract` Files** (e.g., `acmebank1.pdf.extract`)
-    *   **Content:** The raw text content extracted from a source document (like a PDF).
-    *   **Usage:** Validates the underlying text extraction logic. Comparing new extraction results against this file helps detect changes in how text is parsed from the source format.
+    *   **Content:** The expected Beancount directives returned by the importer and rendered as text.
+    *   **Usage:** The version 2 ingestion regression harness compares the rendered accounting entries with this file. Raw PDF text is a separate intermediate result.
 
 *   **`.file_account` Files** (e.g., `acmebank1.pdf.file_account`)
     *   **Content:** The target Beancount account name (e.g., `Assets:US:AcmeBank`).
