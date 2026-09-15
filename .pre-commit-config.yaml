@@ -36,7 +36,8 @@ repos:
     rev: v1.15.0
     hooks:
       - id: mypy
-        additional_dependencies: [types-python-dateutil, types-regex, click]
+        # Match the project's Python 3.9 type-checking target.
+        additional_dependencies: [types-python-dateutil, types-regex, "click<8.2"]
         exclude: ^(tools|experiments)/
 
   - repo: local

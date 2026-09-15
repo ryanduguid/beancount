@@ -13,7 +13,7 @@ jobs:
         with:
           python-version: '3.13'
       - uses: astral-sh/setup-uv@v5
-      - run: make lint
+      - run: make precommit
 
   pre-commit:
     runs-on: ubuntu-latest
