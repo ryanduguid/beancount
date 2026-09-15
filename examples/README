@@ -16,3 +16,10 @@ Files:
   vesting/          : Example input file from a document that explains how to
                       track the vesting of restricted stock units, see
                       http://furius.ca/beancount/doc/vesting
+
+                      Use vesting/vesting.beancount for the corrected entries:
+                      the second conversion buys 8 shares at USD 131.37, the
+                      first refund is USD 94.31, and the zero-balance assertion
+                      is dated 14 June 2015, after the May and June events.
+                      The linked manual still shows 9 shares, USD 94.30 and a
+                      14 February assertion in its grouped example.
