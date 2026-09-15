@@ -52,7 +52,9 @@ You can obtain the source code from the official Git repository on Github:
 
   | https://github.com/beancount/beancount/
 
-See `Installing Beancount`__ for more details.
+Beancount 3.1.0 requires Python 3.9 or later, as specified in ``pyproject.toml``.
+The Python 3.8 minimum in the linked installation guide does not apply to 3.1.0.
+See `Installing Beancount`__ for other installation details.
 
 __ http://furius.ca/beancount/doc/install
 
