@@ -2,7 +2,12 @@ __copyright__ = "Copyright (C) 2014-2025  Martin Blais"
 __license__ = "GNU GPLv2"
 
 import collections
+import contextlib
+import errno
 import io
+import os
+import stat
+import tempfile
 
 import click
 import regex
@@ -166,12 +171,44 @@ def normalize_indent_whitespace(match_pairs):
     return adjusted_pairs
 
 
+def write_file(filename, contents):
+    """Replace a file only after its formatted contents have been written and closed."""
+    filename = os.path.realpath(filename)
+    try:
+        file_stat = os.stat(filename)
+    except FileNotFoundError:
+        permissions = None
+    else:
+        if not stat.S_ISREG(file_stat.st_mode):
+            with click.open_file(filename, mode="w", encoding="utf-8") as stream:
+                stream.write(contents)
+            return
+        permissions = stat.S_IMODE(file_stat.st_mode)
+    if permissions is not None and not os.access(filename, os.W_OK):
+        raise PermissionError(errno.EACCES, os.strerror(errno.EACCES), filename)
+
+    output = tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=os.path.dirname(filename), delete=False
+    )
+    try:
+        with output:
+            output.write(contents)
+        if permissions is not None:
+            os.chmod(output.name, permissions)
+        os.replace(output.name, filename)
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(output.name)
+
+
 @click.command()
-@click.argument("filenames", nargs=-1, type=click.File("r", encoding="utf-8"))
+@click.argument(
+    "filenames", nargs=-1, type=click.Path(exists=True, dir_okay=False, allow_dash=True)
+)
 @click.option(
     "--output",
     "-o",
-    type=click.File("w", encoding="utf-8"),
+    type=click.Path(dir_okay=False, allow_dash=True),
     default="-",
     help="Output file.",
 )
@@ -193,21 +230,27 @@ def main(filenames, output, prefix_width, num_width, currency_column, in_place):
     be overridden with the --prefix-width and --num-width options
     respectively.
 
+    Regular-file outputs are replaced atomically. Symlinks are followed, but other
+    hard links keep the previous contents. Permission bits are preserved;
+    other file metadata may change.
+
     Note: this tool does not parse the Beancount ledger. It simply
     uses regular expressions and text manipulations to do its work.
 
     """
     if len(filenames) == 1 and not in_place:
-        contents = filenames[0].read()
+        with click.open_file(filenames[0], encoding="utf-8") as file:
+            contents = file.read()
 
         formatted_contents = align_beancount(
             contents, prefix_width, num_width, currency_column
         )
 
-        # Click opens files for writing in lazy mode. This prevents
-        # truncating the input file until it has been processed and
-        # validated, avoid data loss in case of errors.
-        output.write(formatted_contents)
+        if output == "-":
+            with click.open_file("-", mode="w", encoding="utf-8") as stream:
+                stream.write(formatted_contents)
+        else:
+            write_file(output, formatted_contents)
     elif len(filenames) > 1 and not in_place and output:
         ctx = click.get_current_context()
         click.echo(ctx.command.get_usage(ctx), err=True)
@@ -221,16 +264,15 @@ def main(filenames, output, prefix_width, num_width, currency_column, in_place):
         )
         ctx.exit(2)
     elif len(filenames) >= 1 and in_place:
-        for file in filenames:
-            filename = file.name
-            contents = file.read()
+        if "-" in filenames:
+            raise click.UsageError("Cannot format standard input in place.")
+        for filename in filenames:
+            with click.open_file(filename, encoding="utf-8") as file:
+                contents = file.read()
             formatted_contents = align_beancount(
                 contents, prefix_width, num_width, currency_column
             )
-            file.close()
-
-            file = open(filename, mode="w", encoding="utf-8")
-            file.write(formatted_contents)
+            write_file(filename, formatted_contents)
     elif not filenames:
         ctx = click.get_current_context()
         click.echo(ctx.command.get_usage(ctx), err=True)

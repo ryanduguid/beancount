@@ -1,11 +1,144 @@
 __copyright__ = "Copyright (C) 2014-2022, 2024-2025  Martin Blais"
 __license__ = "GNU GPLv2"
 
+import io
+import os
+import stat
+import tempfile
 import textwrap
 import unittest
+from pathlib import Path
+from unittest import mock
+
+from click.testing import CliRunner
 
 from beancount.scripts import format
 from beancount.utils import test_utils
+
+
+class TestScriptFormatWrites(test_utils.ClickTestCase):
+    def setUp(self):
+        super().setUp()
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.directory = Path(directory.name)
+        self.filename = self.directory / "ledger.beancount"
+        self.contents = '2024-01-01 * "Lunch"\n  Expenses:Food  10 USD\n  Assets:Cash\n'
+        self.filename.write_text(self.contents, encoding="utf-8")
+        self.formatted = format.align_beancount(self.contents)
+
+    def test_replace_input(self):
+        for options in (("--in-place",), ("--output", str(self.filename))):
+            with self.subTest(options=options):
+                self.filename.write_text(self.contents, encoding="utf-8")
+                self.run_with_args(format.main, str(self.filename), *options)
+                self.assertEqual(self.filename.read_text(encoding="utf-8"), self.formatted)
+                self.assertEqual(list(self.directory.iterdir()), [self.filename])
+
+    def test_failed_write_preserves_input(self):
+        self.assert_failed_output_preserves_input("write")
+
+    def test_failed_close_preserves_input(self):
+        self.assert_failed_output_preserves_input("close")
+
+    def assert_failed_output_preserves_input(self, failure):
+        real_open = io.open
+
+        def failing_open(filename, mode="r", *args, **kwargs):
+            stream = real_open(filename, mode, *args, **kwargs)
+            if "w" not in mode:
+                return stream
+            self.addCleanup(stream.close)
+            wrapper = mock.MagicMock(wraps=stream)
+            wrapper.__enter__.return_value = wrapper
+            wrapper.__exit__.side_effect = stream.__exit__
+
+            def write(contents):
+                stream.write(contents[:10])
+                stream.flush()
+                raise OSError("Simulated failed write")
+
+            def close(*args):
+                stream.close()
+                raise OSError("Simulated failed close")
+
+            if failure == "write":
+                wrapper.write.side_effect = write
+            else:
+                wrapper.__exit__.side_effect = close
+            return wrapper
+
+        for options in (("--in-place",), ("--output", str(self.filename))):
+            with self.subTest(options=options):
+                self.filename.write_text(self.contents, encoding="utf-8")
+                with (
+                    mock.patch("builtins.open", side_effect=failing_open),
+                    mock.patch("io.open", side_effect=failing_open),
+                ):
+                    result = CliRunner().invoke(format.main, [str(self.filename), *options])
+                self.assertNotEqual(result.exit_code, 0)
+                self.assertIn(f"Simulated failed {failure}", str(result.exception))
+                self.assertEqual(self.filename.read_text(encoding="utf-8"), self.contents)
+                self.assertEqual(list(self.directory.iterdir()), [self.filename])
+
+    def test_separate_output(self):
+        output = self.directory / "formatted.beancount"
+        self.run_with_args(format.main, str(self.filename), "--output", str(output))
+        self.assertEqual(output.read_text(encoding="utf-8"), self.formatted)
+        self.assertEqual(self.filename.read_text(encoding="utf-8"), self.contents)
+
+    def test_failed_replace_preserves_input(self):
+        with mock.patch("os.replace", side_effect=OSError("Simulated failed replace")):
+            result = CliRunner().invoke(format.main, [str(self.filename), "--in-place"])
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertEqual(self.filename.read_text(encoding="utf-8"), self.contents)
+        self.assertEqual(list(self.directory.iterdir()), [self.filename])
+
+    def test_multiple_files(self):
+        other = self.directory / "other.beancount"
+        other.write_text(self.contents, encoding="utf-8")
+        self.run_with_args(format.main, str(self.filename), str(other), "--in-place")
+        self.assertEqual(self.filename.read_text(encoding="utf-8"), self.formatted)
+        self.assertEqual(other.read_text(encoding="utf-8"), self.formatted)
+
+    def test_standard_streams(self):
+        result = CliRunner().invoke(format.main, ["-"], input=self.contents)
+        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(result.stdout, self.formatted)
+
+    def test_device_output(self):
+        self.run_with_args(format.main, str(self.filename), "--output", os.devnull)
+        self.assertEqual(self.filename.read_text(encoding="utf-8"), self.contents)
+
+    def test_cannot_format_standard_input_in_place(self):
+        result = CliRunner().invoke(format.main, ["-", "--in-place"], input=self.contents)
+        self.assertEqual(result.exit_code, 2)
+        self.assertIn("Cannot format standard input in place", result.output)
+
+    def test_read_only_input(self):
+        self.filename.chmod(stat.S_IREAD)
+        self.addCleanup(self.filename.chmod, stat.S_IREAD | stat.S_IWRITE)
+        if os.access(self.filename, os.W_OK):
+            self.skipTest("Current user can write read-only files")
+        result = CliRunner().invoke(format.main, [str(self.filename), "--in-place"])
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertEqual(self.filename.read_text(encoding="utf-8"), self.contents)
+
+    @unittest.skipIf(os.name == "nt", "POSIX file permissions")
+    def test_preserves_permissions(self):
+        self.filename.chmod(0o640)
+        self.run_with_args(format.main, str(self.filename), "--in-place")
+        self.assertEqual(stat.S_IMODE(self.filename.stat().st_mode), 0o640)
+
+    def test_preserves_symlink(self):
+        link = self.directory / "linked.beancount"
+        try:
+            link.symlink_to(self.filename.name)
+        except OSError as exc:
+            self.skipTest(f"Cannot create a symlink: {exc}")
+        self.run_with_args(format.main, str(link), "--in-place")
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(self.filename.read_text(encoding="utf-8"), self.formatted)
 
 
 class TestScriptFormat(test_utils.ClickTestCase):
