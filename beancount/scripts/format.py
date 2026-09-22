@@ -177,14 +177,13 @@ def write_file(filename, contents):
     try:
         file_stat = os.stat(filename)
     except FileNotFoundError:
-        permissions = None
-    else:
-        if not stat.S_ISREG(file_stat.st_mode):
-            with click.open_file(filename, mode="w", encoding="utf-8") as stream:
-                stream.write(contents)
-            return
-        permissions = stat.S_IMODE(file_stat.st_mode)
-    if permissions is not None and not os.access(filename, os.W_OK):
+        file_stat = None
+    if file_stat is None or not stat.S_ISREG(file_stat.st_mode):
+        # Nothing to preserve; a new file also keeps the usual umask permissions.
+        with click.open_file(filename, mode="w", encoding="utf-8") as stream:
+            stream.write(contents)
+        return
+    if not os.access(filename, os.W_OK):
         raise PermissionError(errno.EACCES, os.strerror(errno.EACCES), filename)
 
     output = tempfile.NamedTemporaryFile(
@@ -193,8 +192,9 @@ def write_file(filename, contents):
     try:
         with output:
             output.write(contents)
-        if permissions is not None:
-            os.chmod(output.name, permissions)
+            output.flush()
+            os.fsync(output.fileno())
+        os.chmod(output.name, stat.S_IMODE(file_stat.st_mode))
         os.replace(output.name, filename)
     finally:
         with contextlib.suppress(FileNotFoundError):

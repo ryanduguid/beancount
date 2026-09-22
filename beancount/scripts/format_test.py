@@ -130,6 +130,13 @@ class TestScriptFormatWrites(test_utils.ClickTestCase):
         self.run_with_args(format.main, str(self.filename), "--in-place")
         self.assertEqual(stat.S_IMODE(self.filename.stat().st_mode), 0o640)
 
+    @unittest.skipIf(os.name == "nt", "POSIX file permissions")
+    def test_new_output_uses_umask(self):
+        output = self.directory / "formatted.beancount"
+        self.addCleanup(os.umask, os.umask(0o022))
+        self.run_with_args(format.main, str(self.filename), "--output", str(output))
+        self.assertEqual(stat.S_IMODE(output.stat().st_mode), 0o644)
+
     def test_preserves_symlink(self):
         link = self.directory / "linked.beancount"
         try:
