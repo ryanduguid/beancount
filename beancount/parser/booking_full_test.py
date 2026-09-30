@@ -7,6 +7,7 @@ import collections
 import datetime
 import functools
 import io
+import itertools
 import re
 import textwrap
 import unittest
@@ -26,6 +27,7 @@ from beancount.core.number import D
 from beancount.core.position import Cost
 from beancount.core.position import CostSpec
 from beancount.core.position import Position
+from beancount.ops import validation
 from beancount.parser import booking
 from beancount.parser import booking_full as bf
 from beancount.parser import booking_method as bm
@@ -700,6 +702,106 @@ class TestInterpolateCurrencyGroup(unittest.TestCase):
         self.check(
             entries[0],
             {"USD": (False, None, ["Too many missing numbers for currency group"])},
+        )
+
+    def test_incomplete_units_zero_price(self):
+        for currency, price, other in itertools.product(
+            ("USD", "EUR"), ("0.00", "-0.00"), ("-60.00", "-10.00")
+        ):
+            with self.subTest(currency=currency, price=price, other=other):
+                text = f"""
+                2000-01-01 open Assets:Account
+                2000-01-01 open Assets:Stock
+                2000-01-01 open Assets:Other
+                2015-10-02 *
+                  Assets:Account          {currency} @ {price} EUR
+                  Assets:Stock     2 HOOL {{5 EUR}}
+                  Assets:Other     {other} EUR
+                """
+                entries, errors, _ = parser.parse_string(text, dedent=True)
+                self.assertFalse(errors)
+                entry = entries[-1]
+                postings, errors, interpolated = bf.interpolate_group(
+                    entry.postings, {}, "EUR", {}
+                )
+                self.assertFalse(interpolated)
+                self.assertEqual(1, len(errors))
+                self.assertIsInstance(errors[0], bf.InterpolationError)
+                self.assertEqual("Cannot infer units from zero price", errors[0].message)
+                self.assertIs(entry.postings[0].meta, errors[0].source)
+                self.assertIsNone(errors[0].entry)
+                self.assertEqual(2, len(postings))
+                self.assertEqual(A("2 HOOL"), postings[0].units)
+                self.assertEqual(Cost(D("5"), "EUR", None, None), postings[0].cost)
+                self.assertEqual(entry.postings[2], postings[1])
+
+                entries, errors, _ = loader.load_string(text, dedent=True)
+                expected_errors = [bf.InterpolationError]
+                if other == "-60.00":
+                    expected_errors.append(validation.ValidationError)
+                self.assertEqual(expected_errors, [type(error) for error in errors])
+                self.assertEqual("Cannot infer units from zero price", errors[0].message)
+                self.assertEqual(entry.postings[0].meta, errors[0].source)
+                postings = entries[-1].postings
+                self.assertEqual(
+                    ["Assets:Stock", "Assets:Other"], [p.account for p in postings]
+                )
+                self.assertEqual(A("2 HOOL"), postings[0].units)
+                self.assertIsInstance(postings[0].cost, Cost)
+                self.assertEqual(D("5"), postings[0].cost.number)
+                self.assertEqual("EUR", postings[0].cost.currency)
+                self.assertEqual(A(f"{other} EUR"), postings[1].units)
+
+    @parser.parse_doc(allow_incomplete=True)
+    def test_incomplete_units_zero_price_validates_siblings(self, entries, _, options_map):
+        """
+        2015-10-02 *
+          Assets:Account     USD @ 0 EUR
+          Assets:Stock     0 HOOL {5 EUR}
+        """
+        entry = entries[0]
+        postings, errors, interpolated = bf.interpolate_group(entry.postings, {}, "EUR", {})
+        self.assertFalse(interpolated)
+        self.assertEqual(
+            ["Cannot infer units from zero price", 'Amount is zero: "0 HOOL"'],
+            [error.message for error in errors],
+        )
+        self.assertEqual([bf.InterpolationError] * 2, [type(error) for error in errors])
+        self.assertEqual(
+            [p.meta for p in entry.postings], [error.source for error in errors]
+        )
+        self.assertEqual(
+            [entry.postings[1]._replace(cost=Cost(D("5"), "EUR", None, None))], postings
+        )
+
+    @loader.load_doc()
+    def test_incomplete_units_cost_zero_price(self, entries, errors, options_map):
+        """
+        2000-01-01 open Assets:Account
+        2000-01-01 open Assets:Other
+        2015-10-02 *
+          Assets:Account         HOOL {100 USD} @ 0 USD
+          Assets:Other     -1000 USD
+        """
+        posting = entries[-1].postings[0]
+        self.assertEqual(A("10 HOOL"), posting.units)
+        self.assertEqual(D("100"), posting.cost.number)
+        self.assertEqual(A("0 USD"), posting.price)
+        self.assertTrue(posting.meta[interpolate.AUTOMATIC_META])
+
+    @loader.load_doc()
+    def test_complete_zero_price(self, entries, errors, options_map):
+        """
+        2000-01-01 open Assets:Account
+        2000-01-01 open Assets:Other
+        2015-10-02 *
+          Assets:Account   10 HOOL @ 0 USD
+          Assets:Account    0 HOOL @ 0 USD
+          Assets:Other      0 USD
+        """
+        self.assertEqual(
+            [(A("10 HOOL"), A("0 USD")), (A("0 HOOL"), A("0 USD")), (A("0 USD"), None)],
+            [(posting.units, posting.price) for posting in entries[-1].postings],
         )
 
     @parser.parse_doc(allow_incomplete=True)

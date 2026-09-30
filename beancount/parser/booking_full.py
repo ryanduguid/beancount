@@ -908,7 +908,21 @@ def interpolate_group(postings, balances, currency, tolerances):
             weight = ZERO
             weight_currency = currency
 
-        if missing == MissingType.UNITS:
+        if (
+            missing == MissingType.UNITS
+            and incomplete_posting.cost is None
+            and incomplete_posting.price is not None
+            and incomplete_posting.price.number == ZERO
+        ):
+            errors.append(
+                InterpolationError(
+                    incomplete_posting.meta,
+                    "Cannot infer units from zero price",
+                    None,
+                )
+            )
+
+        elif missing == MissingType.UNITS:
             units = incomplete_posting.units
             cost = incomplete_posting.cost
             if cost:
@@ -929,7 +943,7 @@ def interpolate_group(postings, balances, currency, tolerances):
                 cost_total = cost.number_total or ZERO
                 units_number = (weight - cost_total) / cost.number_per
 
-            elif incomplete_posting.price:
+            elif incomplete_posting.price is not None:
                 assert incomplete_posting.price.currency == weight_currency, (
                     "Internal error; residual currency different than missing currency."
                 )
