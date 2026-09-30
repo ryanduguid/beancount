@@ -7,6 +7,7 @@ import collections
 import datetime
 import functools
 import io
+import itertools
 import re
 import textwrap
 import unittest
@@ -26,6 +27,7 @@ from beancount.core.number import D
 from beancount.core.position import Cost
 from beancount.core.position import CostSpec
 from beancount.core.position import Position
+from beancount.ops import validation
 from beancount.parser import booking
 from beancount.parser import booking_full as bf
 from beancount.parser import booking_method as bm
@@ -982,6 +984,66 @@ class TestInterpolateCurrencyGroup(unittest.TestCase):
                     ["Cannot infer price for postings with units held at cost"],
                 )
             },
+        )
+
+    def test_incomplete_price_zero_units(self):
+        for units, price, other in itertools.product(
+            ("0.00", "-0.00"), ("@", "@ USD"), ("-100.00", "0.00")
+        ):
+            with self.subTest(units=units, price=price, other=other):
+                source = textwrap.dedent(f"""\
+                    2015-01-01 open Assets:Account
+                    2015-01-01 open Assets:Other
+
+                    2015-10-02 *
+                      Assets:Account  {units} CAD {price}
+                      Assets:Other    {other} USD
+                """)
+                parsed, parse_errors, _ = parser.parse_string(source)
+                self.assertFalse(parse_errors)
+                original = next(data.filter_txns(parsed))
+                errors = self.check(
+                    original,
+                    {
+                        "USD": (
+                            False,
+                            f"2015-10-02 *\n  Assets:Other {other} USD\n",
+                            ["Cannot infer price from zero units"],
+                        )
+                    },
+                )
+                self.assertIsInstance(errors[0], bf.InterpolationError)
+                self.assertEqual(original.postings[0].meta, errors[0].source)
+
+                entries, errors, _ = loader.load_string(source)
+                expected_errors = [bf.InterpolationError]
+                if D(other) != D("0"):
+                    expected_errors.append(validation.ValidationError)
+                self.assertEqual(expected_errors, [type(error) for error in errors])
+                self.assertEqual("Cannot infer price from zero units", errors[0].message)
+                self.assertEqual(original.postings[0].meta, errors[0].source)
+                loaded = next(data.filter_txns(entries))
+                self.assertEqual(original.postings[1:], loaded.postings)
+
+    @loader.load_doc()
+    def test_explicit_zero_price(self, entries, _, options_map):
+        """
+        2015-01-01 open Assets:Account
+        2015-01-01 open Assets:Other
+
+        2015-10-02 *
+          Assets:Account    0.00 CAD @ 0.00 USD
+          Assets:Other      0.00 USD
+
+        2015-10-02 *
+          Assets:Account  100.00 CAD @ 0.00 USD
+          Assets:Other      0.00 USD
+        """
+        transactions = list(data.filter_txns(entries))
+        self.assertEqual([2, 2], [len(entry.postings) for entry in transactions])
+        self.assertEqual(
+            [(A("0.00 CAD"), A("0.00 USD")), (A("100.00 CAD"), A("0.00 USD"))],
+            [(entry.postings[0].units, entry.postings[0].price) for entry in transactions],
         )
 
     @parser.parse_doc(allow_incomplete=True)

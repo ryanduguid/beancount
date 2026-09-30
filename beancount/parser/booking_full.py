@@ -1000,10 +1000,20 @@ def interpolate_group(postings, balances, currency, tolerances):
                 assert price.currency == weight_currency, (
                     "Internal error; residual currency different than missing currency."
                 )
-                new_price_number = abs(weight / units.number)
-                new_posting = incomplete_posting._replace(
-                    price=Amount(new_price_number, price.currency)
-                )
+                if units.number == ZERO:
+                    errors.append(
+                        InterpolationError(
+                            incomplete_posting.meta,
+                            "Cannot infer price from zero units",
+                            None,
+                        )
+                    )
+                    new_posting = None
+                else:
+                    new_price_number = abs(weight / units.number)
+                    new_posting = incomplete_posting._replace(
+                        price=Amount(new_price_number, price.currency)
+                    )
 
         else:
             assert False, "Internal error; Invalid missing type."
