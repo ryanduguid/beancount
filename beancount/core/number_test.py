@@ -3,15 +3,17 @@ __license__ = "GNU GPLv2"
 
 import decimal
 import random
+import subprocess
+import sys
 import unittest
 from decimal import Decimal
-from pathlib import Path
 
 from beancount.core import number
 from beancount.core.number import ZERO
 from beancount.core.number import D
 from beancount.core.number import round_to
 from beancount.core.number import same_sign
+from beancount.utils import test_utils
 
 
 class TestDecimalPrecision(unittest.TestCase):
@@ -29,17 +31,27 @@ class TestDecimalPrecision(unittest.TestCase):
 
 class TestToDecimal(unittest.TestCase):
     def test_D_rejects_unsupported_values_with_optimisation(self):
-        source = Path(number.__file__).read_text(encoding="utf-8")
-        for optimisation in (0, 1, 2):
-            namespace = {}
-            exec(compile(source, number.__file__, "exec", optimize=optimisation), namespace)
-            with self.subTest(optimisation=optimisation):
-                with self.assertRaises(ValueError) as context:
-                    namespace["D"]([])
-                self.assertEqual(
-                    "Impossible to create Decimal instance from []: Invalid value to convert: []",
-                    str(context.exception),
-                )
+        with self.assertRaises(ValueError) as context:
+            D([])
+        self.assertEqual(
+            "Impossible to create Decimal instance from []: Invalid value to convert: []",
+            str(context.exception),
+        )
+        if not sys.flags.optimize:
+            test_id = (
+                "beancount.core.number_test."
+                "TestToDecimal.test_D_rejects_unsupported_values_with_optimisation"
+            )
+            for option in ("-O", "-OO"):
+                with self.subTest(optimisation=option):
+                    result = subprocess.run(
+                        [sys.executable, option, "-m", "unittest", test_id],
+                        env=test_utils.subprocess_env(),
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+                    self.assertEqual(0, result.returncode, result.stderr)
 
     def test_ZERO(self):
         self.assertEqual(ZERO, decimal.Decimal("0"))
