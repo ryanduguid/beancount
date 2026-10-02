@@ -166,14 +166,19 @@ def _book(entries, options_map, methods, initial_balances=None):
                 errors.extend(cat_errors)
                 continue
             posting_groups = replace_currencies(entry.postings, refer_groups)
+            resolved_postings = [
+                posting
+                for _, group_postings in posting_groups
+                for posting in group_postings
+            ]
 
             # Get the list of tolerances.
             tolerances_max = interpolate.infer_tolerances(
-                entry.postings, options_map, mode="max"
+                resolved_postings, options_map, mode="max"
             )
             if options_map["use_precise_interpolation"]:
                 tolerances_interp = interpolate.infer_tolerances(
-                    entry.postings, options_map, mode="min"
+                    resolved_postings, options_map, mode="min"
                 )
             else:
                 tolerances_interp = tolerances_max

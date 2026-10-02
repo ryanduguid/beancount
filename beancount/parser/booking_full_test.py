@@ -3479,6 +3479,97 @@ class TestBook(unittest.TestCase):
 
 
 class TestInterpolationRounding(cmptest.TestCase):
+    def test_interpolation_with_inferred_cost_currency(self):
+        for precise in ("FALSE", "TRUE"):
+            for cost_currency in ("", "USD"):
+                with self.subTest(precise=precise, cost_currency=cost_currency):
+                    entries, errors, _ = loader.load_string(
+                        textwrap.dedent(f'''
+                        option "inferred_tolerance_default" "USD:0.005"
+                        option "inferred_tolerance_default" "*:0.5"
+                        option "use_precise_interpolation" "{precise}"
+
+                        2026-01-01 open Equity:Opening USD
+                        2026-01-01 open Assets:Inventory THING
+                        2026-01-01 open Expenses:Materials USD
+                        2026-01-01 * "Initial lot"
+                          Equity:Opening -0.97 USD
+                          Assets:Inventory 1 THING {{0.97 USD}}
+                        2026-01-02 * "Reduction"
+                          Assets:Inventory -1 THING {{{cost_currency}}}
+                          Expenses:Materials
+                    ''')
+                    )
+                    self.assertFalse(errors)
+                    txn = [e for e in entries if isinstance(e, data.Transaction)][-1]
+                    self.assertEqual(amount.from_string("0.97 USD"), txn.postings[-1].units)
+                    self.assertEqual(D("0.005"), txn.meta["__tolerances__"]["USD"])
+
+    @loader.load_doc()
+    def test_interpolation_with_inferred_currency_groups(
+        self, entries, errors, options_map
+    ):
+        """
+        option "inferred_tolerance_default" "USD:0.005"
+        option "inferred_tolerance_default" "CAD:0.05"
+        option "inferred_tolerance_default" "*:0.5"
+
+        2026-01-01 open Equity:Opening
+        2026-01-01 open Assets:First THINGUSD
+        2026-01-01 open Assets:Second THINGCAD
+        2026-01-01 open Expenses:Materials
+        2026-01-01 * "First lot"
+          Equity:Opening -0.97 USD
+          Assets:First 1 THINGUSD {0.97 USD}
+        2026-01-01 * "Second lot"
+          Equity:Opening -1.43 CAD
+          Assets:Second 1 THINGCAD {1.43 CAD}
+        2026-01-02 * "Reduction"
+          Assets:First -1 THINGUSD {}
+          Assets:Second -1 THINGCAD {}
+          Expenses:Materials
+        """
+        self.assertFalse(errors)
+        txn = [e for e in entries if isinstance(e, data.Transaction)][-1]
+        expenses = [p.units for p in txn.postings if p.account == "Expenses:Materials"]
+        self.assertCountEqual(
+            [amount.from_string("0.97 USD"), amount.from_string("1.4 CAD")], expenses
+        )
+        self.assertEqual({"USD": D("0.005"), "CAD": D("0.05")}, txn.meta["__tolerances__"])
+
+    def test_cost_tolerances_with_inferred_currency(self):
+        for precise in ("FALSE", "TRUE"):
+            transactions = []
+            for cost_currency in ("", "USD"):
+                with self.subTest(precise=precise, cost_currency=cost_currency):
+                    entries, errors, _ = loader.load_string(
+                        textwrap.dedent(f'''
+                        option "inferred_tolerance_default" "USD:0.005"
+                        option "inferred_tolerance_default" "*:0.5"
+                        option "infer_tolerance_from_cost" "TRUE"
+                        option "use_precise_interpolation" "{precise}"
+
+                        2026-01-01 open Equity:Opening USD
+                        2026-01-01 open Assets:Inventory THING
+                        2026-01-01 open Expenses:Materials USD
+                        2026-01-01 * "Initial lot"
+                          Equity:Opening -1.00 USD
+                          Assets:Inventory 1.00 THING {{1.00 USD}}
+                        2026-01-02 * "Reduction"
+                          Assets:Inventory -1.00 THING {{{cost_currency}}}
+                          Expenses:Materials
+                    ''')
+                    )
+                    self.assertFalse(errors)
+                    transactions.append(
+                        [e for e in entries if isinstance(e, data.Transaction)][-1]
+                    )
+            inferred, explicit = transactions
+            self.assertEqual(inferred.postings[-1].units, explicit.postings[-1].units)
+            self.assertEqual(
+                inferred.meta["__tolerances__"], explicit.meta["__tolerances__"]
+            )
+
     @loader.load_doc()
     def test_interpolation_uses_finest_tolerance(self, entries, errors, options_map):
         """
