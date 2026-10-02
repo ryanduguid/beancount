@@ -5,6 +5,7 @@ import decimal
 import random
 import unittest
 from decimal import Decimal
+from pathlib import Path
 
 from beancount.core import number
 from beancount.core.number import ZERO
@@ -27,6 +28,19 @@ class TestDecimalPrecision(unittest.TestCase):
 
 
 class TestToDecimal(unittest.TestCase):
+    def test_D_rejects_unsupported_values_with_optimisation(self):
+        source = Path(number.__file__).read_text(encoding="utf-8")
+        for optimisation in (0, 1, 2):
+            namespace = {}
+            exec(compile(source, number.__file__, "exec", optimize=optimisation), namespace)
+            with self.subTest(optimisation=optimisation):
+                with self.assertRaises(ValueError) as context:
+                    namespace["D"]([])
+                self.assertEqual(
+                    "Impossible to create Decimal instance from []: Invalid value to convert: []",
+                    str(context.exception),
+                )
+
     def test_ZERO(self):
         self.assertEqual(ZERO, decimal.Decimal("0"))
 

@@ -64,7 +64,7 @@ def D(strord: Decimal | str | None = None) -> Decimal:
         elif isinstance(strord, (int, float)):
             return Decimal(strord)
         else:
-            assert strord is None, "Invalid value to convert: {}".format(strord)
+            raise ValueError("Invalid value to convert: {}".format(strord))
     except Exception as exc:
         raise ValueError(
             "Impossible to create Decimal instance from {!s}: {}".format(strord, exc)
