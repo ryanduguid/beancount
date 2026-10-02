@@ -36,7 +36,8 @@ repos:
     rev: v1.15.0
     hooks:
       - id: mypy
-        additional_dependencies: [types-python-dateutil, types-regex, click]
+        # Match the Python 3.9 target in pyproject.toml.
+        additional_dependencies: [types-python-dateutil, types-regex, 'click>=8.1,<8.2']
         exclude: ^(tools|experiments)/
 
   - repo: local

@@ -150,7 +150,8 @@ sfood-checker:
 constraints dep-constraints: build/beancount.deps
 	$(TOOLS)/dependency_constraints.py $<
 
-pc precommit:
+.PHONY: lint
+pc precommit lint:
 	uvx pre-commit run --all-files
 
 # Check everything.
