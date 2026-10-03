@@ -71,14 +71,17 @@ def subprocess_env():
     """
     # Ensure we have locations to invoke our Python executable and our
     # runnable binaries in the test environment to run subprocesses.
-    binpath = ":".join(
+    binpath = os.pathsep.join(
         [
             path.dirname(sys.executable),
             path.join(find_repository_root(__file__), "bin"),
-            os.environ.get("PATH", "").strip(":"),
+            os.environ.get("PATH", "").strip(os.pathsep),
         ]
-    ).strip(":")
-    return {"PATH": binpath, "PYTHONPATH": find_python_lib()}
+    ).strip(os.pathsep)
+    environment = {"PATH": binpath, "PYTHONPATH": find_python_lib()}
+    if sys.platform == "win32" and "SystemRoot" in os.environ:
+        environment["SystemRoot"] = os.environ["SystemRoot"]
+    return environment
 
 
 @contextlib.contextmanager
