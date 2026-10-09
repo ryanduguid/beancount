@@ -2,6 +2,20 @@
    beancount: Double-Entry Accounting from Text Files
 ========================================================
 
+**Fork status**
+
+.. image:: https://app.codacy.com/project/badge/Grade/8a7cfa90867f47b6991b0eef314cc8c6?branch=master
+   :target: https://app.codacy.com/gh/ryanduguid/beancount/dashboard
+   :alt: Fork code quality
+
+.. image:: https://github.com/ryanduguid/beancount/actions/workflows/linting.yaml/badge.svg?branch=master
+   :target: https://github.com/ryanduguid/beancount/actions/workflows/linting.yaml
+   :alt: Fork linting
+
+.. image:: https://github.com/ryanduguid/beancount/actions/workflows/tests.yaml/badge.svg?branch=master
+   :target: https://github.com/ryanduguid/beancount/actions/workflows/tests.yaml
+   :alt: Fork tests
+
 .. contents::
 ..
     1  Description
