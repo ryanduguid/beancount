@@ -39,9 +39,10 @@ Defined in `data.py`, these immutable objects represent the parsed content of a 
 
 ```mermaid
 graph TD
+%%{init: {"theme": "base", "look": "classic", "themeVariables": {"background": "#000000", "primaryColor": "#66023C", "primaryTextColor": "#FFFFF0", "primaryBorderColor": "#FFFFF0", "lineColor": "#000000", "textColor": "#FFFFF0", "edgeLabelBackground": "#000000", "clusterBkg": "#000000", "clusterBorder": "#FFFFF0", "titleColor": "#FFFFF0"}, "themeCSS": ".flowchart-link, .relationshipLine, marker path { filter: drop-shadow(0px 1px 0px #FFFFF0) drop-shadow(0px -1px 0px #FFFFF0) drop-shadow(1px 0px 0px #FFFFF0) drop-shadow(-1px 0px 0px #FFFFF0); }"}}%%
     Input[Plain Text File] --> Parser
-    Parser --> Entries[List of Directives (data.py)]
-    Entries --> Realization[realization.realize()]
+    Parser --> Entries["List of Directives (data.py)"]
+    Entries --> Realization["realization.realize()"]
     Realization --> RealAccountTree[Tree of RealAccount objects]
 
     subgraph Core Structures
@@ -49,6 +50,7 @@ graph TD
     Inventory -- contains --> Position
     Position -- contains --> Amount
     end
+    style RealAccountTree fill:#7851A9,stroke:#FFFFF0,stroke-width:2px,color:#FFFFF0
 ```
 
 ## Intention
