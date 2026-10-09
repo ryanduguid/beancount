@@ -6,7 +6,11 @@ __license__ = "GNU GPLv2"
 import bisect
 import graphlib
 from collections import defaultdict
+from itertools import islice
+from typing import TYPE_CHECKING
 from typing import NamedTuple
+from typing import Optional
+from typing import cast
 
 from beancount.core import account
 from beancount.core import amount
@@ -16,6 +20,9 @@ from beancount.core import inventory
 from beancount.core import position
 from beancount.core import realization
 from beancount.ops import balance
+
+if TYPE_CHECKING:
+    import datetime
 
 __plugins__ = ("pad",)
 
@@ -36,7 +43,7 @@ class _PaddingSlot(NamedTuple):
 def _padding_slots(entries):
     """Find each Pad account's first check per currency, including passing checks."""
     active = {}
-    consumed = {}
+    consumed: dict[str, set[str]] = {}
     slots = []
     for entry in data.sorted(entries):
         if isinstance(entry, data.Pad):
@@ -52,14 +59,14 @@ def _padding_slots(entries):
 
 def _padding_dependencies(slots):
     """Index transfers by the checked subtree, currency and effective date."""
-    checks = {}
+    checks: dict[tuple[str, str], tuple[list[datetime.date], list[int]]] = {}
     for index, slot in enumerate(slots):
         key = (slot.check.account, slot.check.amount.currency)
         dates, indices = checks.setdefault(key, ([], []))
         dates.append(slot.check.date)
         indices.append(index)
 
-    dependencies = {index: set() for index in range(len(slots))}
+    dependencies: dict[int, set[int]] = {index: set() for index in range(len(slots))}
     previous = {}
     for _, indices in checks.values():
         for earlier, later in zip(indices, indices[1:]):
@@ -104,23 +111,40 @@ def _insert_padding(entries, slots, resolved):
     return output
 
 
+def _padding_order(dependencies):
+    """Visit ready dependency chains without retaining a whole independent batch."""
+    sorter = graphlib.TopologicalSorter(dependencies)
+    try:
+        sorter.prepare()
+    except graphlib.CycleError:
+        # Unrelated acyclic slots can still be resolved.
+        pass
+    ready = list(sorter.get_ready())
+    order = []
+    while ready:
+        index = ready.pop()
+        order.append(index)
+        sorter.done(index)
+        ready.extend(sorter.get_ready())
+    return order
+
+
 def _original_postings(entries, slots):
-    """Index ordered posting references by checked subtree and units currency."""
-    checks = {(slot.check.account, slot.check.amount.currency) for slot in slots}
-    streams = {}
+    """Index each original posting once per checked units currency."""
+    currencies = {slot.check.amount.currency for slot in slots}
+    streams: dict[str, tuple[list[datetime.date], list[tuple[tuple, data.Posting]]]] = {}
     ordered = sorted(enumerate(entries), key=lambda pair: data.entry_sortkey(pair[1]))
     for entry_index, entry in ordered:
         if not isinstance(entry, data.Transaction):
             continue
         for posting_index, posting in enumerate(entry.postings):
-            key = (*data.entry_sortkey(entry), entry_index, 0, posting_index)
-            for parent in account.parents(posting.account):
-                if (parent, posting.units.currency) in checks:
-                    dates, postings = streams.setdefault(
-                        (parent, posting.units.currency), ([], [])
-                    )
-                    dates.append(entry.date)
-                    postings.append((key, posting))
+            # Padding runs after booking, so posting units are complete.
+            units = cast("amount.Amount", posting.units)
+            if units.currency in currencies:
+                key = (*data.entry_sortkey(entry), entry_index, 0, posting_index)
+                dates, postings = streams.setdefault(units.currency, ([], []))
+                dates.append(entry.date)
+                postings.append((key, posting))
     return streams
 
 
@@ -146,7 +170,7 @@ def pad(entries, options_map):
     entries; unresolved dependencies produce errors instead of arbitrary amounts.
 
     Args:
-      entries: A list of directives.
+      entries: A list of booked directives.
       options_map: A parser options dict.
     Returns:
       A new list of directives and a list of padding errors.
@@ -160,96 +184,86 @@ def pad(entries, options_map):
             if isinstance(entry, data.Pad)
         ]
     dependencies, previous = _padding_dependencies(slots)
+    order = _padding_order(dependencies)
     streams = _original_postings(entries, slots)
     pad_indices = {
         id(entry): index
         for index, entry in enumerate(entries)
         if isinstance(entry, data.Pad)
     }
-    retained = set(previous.values())
-    sorter = graphlib.TopologicalSorter(dependencies)
-    try:
-        sorter.prepare()
-    except graphlib.CycleError:
-        # Unrelated acyclic slots can still be resolved.
-        pass
+    retained = {previous[index] for index in order if index in previous}
 
-    resolved = {}
-    states = {}
-    while sorter.is_active():
-        ready = sorter.get_ready()
-        if not ready:
-            break
-        # Only committed predecessor transactions are visible to this batch.
-        batch = {}
-        for index in ready:
-            slot = slots[index]
-            earlier = previous.get(index)
-            if earlier is None:
-                root, start = realization.RealAccount(""), 0
-            else:
-                # This state has exactly one same-key successor. Each foreign
-                # transfer was delivered to its first strictly later check.
-                root, start = states.pop(earlier)
-            dates, postings = streams.get(
-                (slot.check.account, slot.check.amount.currency), ([], [])
-            )
-            end = bisect.bisect_left(dates, slot.check.date)
-            events = postings[start:end]
-            is_child = account.parent_matcher(slot.check.account)
-            for predecessor in dependencies[index]:
-                if predecessor == earlier:
-                    continue
-                transaction = resolved[predecessor]
-                if transaction is not None:
-                    for posting_index, posting in enumerate(transaction.postings):
-                        if is_child(posting.account):
-                            key = (
-                                *data.entry_sortkey(transaction),
-                                pad_indices[id(slots[predecessor].pad)],
-                                predecessor + 1,
-                                posting_index,
-                            )
-                            events.append((key, posting))
-            events.sort(key=lambda pair: pair[0])
-            own_key = (
-                *data.entry_sortkey(slot.pad),
-                pad_indices[id(slot.pad)],
-                index + 1,
-                0,
-            )
-            checked, before_pad = _replay_postings(root, slot, events, own_key)
-            pad_balance = realization.compute_balance(checked, leaf_only=False)
+    resolved: dict[int, Optional[data.Transaction]] = {}
+    states: dict[int, tuple[realization.RealAccount, int]] = {}
+    for index in order:
+        slot = slots[index]
+        earlier = previous.get(index)
+        if earlier is None:
+            root, start = realization.RealAccount(""), 0
+        else:
+            # This state has exactly one same-key successor. Each foreign
+            # transfer was delivered to its first strictly later check.
+            root, start = states.pop(earlier)
+        dates, postings = streams.get(slot.check.amount.currency, ([], []))
+        end = bisect.bisect_left(dates, slot.check.date)
+        is_child = account.parent_matcher(slot.check.account)
+        events = [
+            (key, posting)
+            for key, posting in islice(postings, start, end)
+            if is_child(posting.account)
+        ]
+        for predecessor in dependencies[index]:
+            if predecessor == earlier:
+                continue
+            transaction = resolved[predecessor]
+            if transaction is not None:
+                for posting_index, posting in enumerate(transaction.postings):
+                    if is_child(posting.account):
+                        key = (
+                            *data.entry_sortkey(transaction),
+                            pad_indices[id(slots[predecessor].pad)],
+                            predecessor + 1,
+                            posting_index,
+                        )
+                        events.append((key, posting))
+        events.sort(key=lambda pair: pair[0])
+        own_key = (
+            *data.entry_sortkey(slot.pad),
+            pad_indices[id(slot.pad)],
+            index + 1,
+            0,
+        )
+        checked, before_pad = _replay_postings(root, slot, events, own_key)
+        pad_balance = realization.compute_balance(checked, leaf_only=False)
 
-            check_amount = slot.check.amount
-            balance_amount = pad_balance.get_currency_units(check_amount.currency)
-            tolerance = balance.get_balance_tolerance(slot.check, options_map)
-            if abs(balance_amount.number - check_amount.number) <= tolerance:
-                batch[index] = None
-            elif account.parent_matcher(slot.check.account)(slot.pad.source_account):
-                pad_errors.append(
-                    PadError(
-                        slot.check.meta,
-                        "Cannot pad from a source account inside the checked subtree",
-                        slot.pad,
-                    )
+        check_amount = slot.check.amount
+        balance_amount = pad_balance.get_currency_units(check_amount.currency)
+        tolerance = balance.get_balance_tolerance(slot.check, options_map)
+        if abs(balance_amount.number - check_amount.number) <= tolerance:
+            resolved[index] = None
+        elif account.parent_matcher(slot.check.account)(slot.pad.source_account):
+            pad_errors.append(
+                PadError(
+                    slot.check.meta,
+                    "Cannot pad from a source account inside the checked subtree",
+                    slot.pad,
                 )
-                batch[index] = None
-            else:
-                batch[index] = _create_padding(
-                    slot.pad, slot.check, inventory.Inventory(pad_balance), pad_errors
-                )
-                # Preserve the legacy difference calculation, but carry the
-                # actual ledger state after inserting at the earlier Pad date.
-                checked.balance = before_pad
-                checked.balance.add_position(batch[index].postings[0])
-                for key, posting in events:
-                    if key >= own_key and posting.account == slot.pad.account:
-                        checked.balance.add_position(posting)
-            if index in retained:
-                states[index] = root, end
-        resolved.update(batch)
-        sorter.done(*ready)
+            )
+            resolved[index] = None
+        else:
+            transaction = _create_padding(
+                slot.pad, slot.check, inventory.Inventory(pad_balance), pad_errors
+            )
+            resolved[index] = transaction
+            # Preserve the legacy difference calculation, but carry the
+            # actual ledger state after inserting at the earlier Pad date.
+            checked.balance = before_pad
+            checked.balance.add_position(transaction.postings[0])
+            for key, posting in events:
+                if key >= own_key and posting.account == slot.pad.account:
+                    checked.balance.add_position(posting)
+        if index in retained:
+            states[index] = root, end
 
     used = set()
     for index, slot in enumerate(slots):
@@ -272,7 +286,7 @@ def pad(entries, options_map):
     return _insert_padding(entries, slots, resolved), pad_errors
 
 
-def _create_padding(active_pad, entry, pad_balance, pad_errors):
+def _create_padding(active_pad, entry, pad_balance, pad_errors) -> data.Transaction:
     """Create a transfer with the existing padding metadata and cost checks."""
     check_amount = entry.amount
     balance_amount = pad_balance.get_currency_units(check_amount.currency)

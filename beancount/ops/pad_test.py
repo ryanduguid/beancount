@@ -3,11 +3,14 @@ __license__ = "GNU GPLv2"
 
 import datetime
 import decimal
+import gc
 import itertools
 import tempfile
 import textwrap
 import unittest
+import weakref
 from os import path
+from unittest import mock
 
 from beancount import loader
 from beancount.core import data
@@ -676,6 +679,98 @@ class TestPadding(cmptest.TestCase):
 
 
 class TestPaddingChains(cmptest.TestCase):
+    def test_overlapping_accounts_index_original_postings_once(self):
+        accounts = ["Assets:Cash" + ":Wallet" * index for index in range(8)]
+        meta = data.new_metadata("synthetic", 1)
+        postings = [
+            data.Posting(accounts[-1], A("1 AUD"), None, None, None, meta),
+            data.Posting("Equity:Opening", A("-1 AUD"), None, None, None, meta),
+        ]
+        entries = [
+            data.Transaction(
+                meta,
+                datetime.date(2010, 1, 1),
+                "*",
+                None,
+                "Opening",
+                data.EMPTY_SET,
+                data.EMPTY_SET,
+                postings,
+            )
+        ]
+        for index, account_name in enumerate(accounts):
+            entries.extend(
+                [
+                    data.Pad(
+                        data.new_metadata("synthetic", index + 2),
+                        datetime.date(2010, 1, 2),
+                        account_name,
+                        "Equity:Opening",
+                    ),
+                    data.Balance(
+                        data.new_metadata("synthetic", index + 10),
+                        datetime.date(2010, 1, 3),
+                        account_name,
+                        A("1 AUD"),
+                        decimal.Decimal(0),
+                        None,
+                    ),
+                ]
+            )
+        streams = pad._original_postings(entries, pad._padding_slots(entries))
+        indexed = [posting for _, events in streams.values() for _, posting in events]
+        self.assertEqual(len(indexed), len(postings))
+        self.assertEqual({id(posting) for posting in indexed}, {id(p) for p in postings})
+        output, errors = pad.pad(entries, {})
+        self.assertEqual(output, entries)
+        self.assertEqual([error.message for error in errors], ["Unused Pad entry"] * 8)
+
+    def test_independent_chains_release_realization_states(self):
+        counts = [0, 0]
+        references = []
+
+        def released(_):
+            counts[0] -= 1
+
+        class MonitoredRealAccount(realization.RealAccount):
+            def __init__(self, account_name):
+                if not account_name:
+                    gc.collect()
+                super().__init__(account_name)
+                if not account_name:
+                    counts[0] += 1
+                    counts[1] = max(counts)
+                    references.append(weakref.ref(self, released))
+
+        entries = []
+        for phase in range(2):
+            for index in range(8):
+                account_name = f"Assets:Cash{index}"
+                entries.extend(
+                    [
+                        data.Pad(
+                            data.new_metadata("synthetic", len(entries) + 1),
+                            datetime.date(2010, 1, 2 + 2 * phase),
+                            account_name,
+                            "Equity:Opening",
+                        ),
+                        data.Balance(
+                            data.new_metadata("synthetic", len(entries) + 2),
+                            datetime.date(2010, 1, 3 + 2 * phase),
+                            account_name,
+                            A("0 AUD"),
+                            decimal.Decimal(0),
+                            None,
+                        ),
+                    ]
+                )
+        with mock.patch.object(realization, "RealAccount", MonitoredRealAccount):
+            output, errors = pad.pad(entries, {})
+        self.assertEqual(output, entries)
+        self.assertEqual([error.message for error in errors], ["Unused Pad entry"] * 16)
+        self.assertEqual(len(references), 8)
+        self.assertLessEqual(counts[1], 2)
+
     def test_backdated_own_pad_carries_actual_ledger_balance(self):
         for precision, number in ((6, "9999.99"), (28, "99999999999999999999999999.99")):
             with self.subTest(precision=precision), decimal.localcontext() as context:
