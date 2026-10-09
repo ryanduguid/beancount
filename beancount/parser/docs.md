@@ -10,11 +10,13 @@ The parsing process follows a multi-stage pipeline:
 
 ```mermaid
 graph LR
+%%{init: {"theme": "base", "look": "classic", "themeVariables": {"background": "#000000", "primaryColor": "#66023C", "primaryTextColor": "#FFFFF0", "primaryBorderColor": "#FFFFF0", "lineColor": "#000000", "textColor": "#FFFFF0", "edgeLabelBackground": "#000000", "clusterBkg": "#000000", "clusterBorder": "#FFFFF0", "titleColor": "#FFFFF0"}, "themeCSS": ".flowchart-link, .relationshipLine, marker path { filter: drop-shadow(0px 1px 0px #FFFFF0) drop-shadow(0px -1px 0px #FFFFF0) drop-shadow(1px 0px 0px #FFFFF0) drop-shadow(-1px 0px 0px #FFFFF0); }"}}%%
     Input[Input File] --> Lexer
-    Lexer[Lexer (Flex/C)] --> Parser
-    Parser[Parser (Bison/C)] --> Incomplete[Incomplete Entries]
-    Incomplete -->|loader| Booking[Booking Logic (Python)]
+    Lexer["Lexer (Flex/C)"] --> Parser
+    Parser["Parser (Bison/C)"] --> Incomplete[Incomplete Entries]
+    Incomplete -->|loader| Booking["Booking Logic (Python)"]
     Booking --> Complete[Complete Entries]
+    style Complete fill:#7851A9,stroke:#FFFFF0,stroke-width:2px,color:#FFFFF0
 ```
 
 1.  **Lexing & Parsing (C Extension)**: The raw text is tokenized and parsed using a C extension generated from `lexer.l` (Flex) and `grammar.y` (Bison). This stage produces "incomplete" Python objects where some fields (like inferred amounts or costs) may be marked as `MISSING`.
