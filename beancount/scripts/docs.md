@@ -77,8 +77,8 @@ graph LR
     bf --> format
     doctor -.-> directories
     doctor -.-> deps
-    style bc fill:#7851A9,stroke:#FFFFF0,stroke-width:2px,color:#FFFFF0
-    style bd fill:#7851A9,stroke:#FFFFF0,stroke-width:2px,color:#FFFFF0
-    style be fill:#7851A9,stroke:#FFFFF0,stroke-width:2px,color:#FFFFF0
-    style bf fill:#7851A9,stroke:#FFFFF0,stroke-width:2px,color:#FFFFF0
+    style bc fill:#990024,stroke:#FFFFF0,stroke-width:2px,color:#FFFFF0
+    style bd fill:#990024,stroke:#FFFFF0,stroke-width:2px,color:#FFFFF0
+    style be fill:#990024,stroke:#FFFFF0,stroke-width:2px,color:#FFFFF0
+    style bf fill:#990024,stroke:#FFFFF0,stroke-width:2px,color:#FFFFF0
 ```

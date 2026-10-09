@@ -16,7 +16,7 @@ graph LR
     Parser["Parser (Bison/C)"] --> Incomplete[Incomplete Entries]
     Incomplete -->|loader| Booking["Booking Logic (Python)"]
     Booking --> Complete[Complete Entries]
-    style Complete fill:#7851A9,stroke:#FFFFF0,stroke-width:2px,color:#FFFFF0
+    style Complete fill:#990024,stroke:#FFFFF0,stroke-width:2px,color:#FFFFF0
 ```
 
 1.  **Lexing & Parsing (C Extension)**: The raw text is tokenized and parsed using a C extension generated from `lexer.l` (Flex) and `grammar.y` (Bison). This stage produces "incomplete" Python objects where some fields (like inferred amounts or costs) may be marked as `MISSING`.

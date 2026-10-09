@@ -50,7 +50,7 @@ graph TD
     Inventory -- contains --> Position
     Position -- contains --> Amount
     end
-    style RealAccountTree fill:#7851A9,stroke:#FFFFF0,stroke-width:2px,color:#FFFFF0
+    style RealAccountTree fill:#990024,stroke:#FFFFF0,stroke-width:2px,color:#FFFFF0
 ```
 
 ## Intention
