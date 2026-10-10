@@ -32,7 +32,7 @@ jobs:
         if: runner.os == 'Windows'
       - run: pacman --noconfirm -S bison flex
         if: runner.os == 'Windows'
-      - uses: bus1/cabuild/action/msdevshell@v1
+      - uses: bus1/cabuild/action/msdevshell@06ea2833eef61e9b0d0ce0d728416e617e4fb1fe # v1
         with:
           architecture: x64
         if: runner.os == 'Windows'

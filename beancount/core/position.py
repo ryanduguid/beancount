@@ -376,7 +376,7 @@ class Position(NamedTuple("Position", [("units", Amount), ("cost", Optional[Cost
                     continue
 
                 # Match a label.
-                match = re.match(r'"([^"]+)*"$', expr)
+                match = re.match(r'"([^"]+)?"$', expr)
                 if match:
                     label = match.group(1)
                     continue
