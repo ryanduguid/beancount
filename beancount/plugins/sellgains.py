@@ -52,9 +52,10 @@ In general terms, it does the following: For transactions with postings that
 have a cost and a price, it verifies that the sum of the positions on all
 postings to non-income accounts is below tolerance.
 
-An unpriced acquisition can be valued at cost when it cannot reduce the account's
-holdings and has no opposing posting in the same commodity. Transfers, round trips
-and uncertain inventory histories still require prices on every cost posting.
+An unpriced acquisition can be valued at cost when its cost date matches the
+transaction date, it cannot reduce the account's holdings and it has no opposing
+posting in the same commodity. Historical cost carryovers, round trips and
+uncertain inventory histories still require prices on every cost posting.
 
 This provides yet another level of verification and allows you to elide the
 income amounts, knowing that the price is there to provide an extra level of
@@ -140,6 +141,7 @@ def validate_sell_gains(entries, options_map):
             and len(tracked_postings) == len(entry.postings)
             and all(
                 posting.account not in incomplete_accounts
+                and posting.cost.date == entry.date
                 and not balances[posting.account].is_reduced_by(posting.units)
                 and not any(
                     other.units.currency == posting.units.currency

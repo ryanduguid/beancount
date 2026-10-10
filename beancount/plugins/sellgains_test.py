@@ -109,23 +109,27 @@ class TestSellGains(unittest.TestCase):
                     )
 
     def test_transfers(self):
-        for price, errors in [
-            ("", ()),
-            (" @ 200.00 USD", ()),
-            (" @ 100.00 USD", (sellgains.SellGainsError,)),
-        ]:
-            with self.subTest(price=price):
-                self.check_exchange(
-                    f"""
+        for commodity in ["OLD", "NEW"]:
+            for price, errors in [
+                ("", ()),
+                (" @ 200.00 USD", ()),
+                (" @ 100.00 USD", (sellgains.SellGainsError,)),
+            ]:
+                with self.subTest(commodity=commodity, price=price):
+                    transactions = self.check_exchange(
+                        f"""
                 2000-01-01 * "Buy"
                   Assets:Source 1.00 OLD {{100.00 USD}}
                   Assets:Cash -100.00 USD
                 2000-01-02 * "Transfer historical cost"
                   Assets:Source -1.00 OLD {{}} @ 200.00 USD
-                  Assets:Target 1.00 OLD {{100.00 USD, 2000-01-01}}{price}
+                  Assets:Target 1.00 {commodity} {{100.00 USD, 2000-01-01}}{price}
                 """,
-                    errors,
-                )
+                        errors,
+                    )
+                    self.assertEqual(
+                        transactions[-1].postings[1].cost.date, transactions[0].date
+                    )
 
     def test_none_booking_opposing_lots(self):
         for date in ["", ", 2000-01-01"]:
