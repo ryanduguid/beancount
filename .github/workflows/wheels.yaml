@@ -40,11 +40,11 @@ jobs:
           # install a new python so we can use new version of cibuildwheel
           python-version: '3.13'
 
-      - uses: bus1/cabuild/action/msdevshell@v1
+      - uses: bus1/cabuild/action/msdevshell@06ea2833eef61e9b0d0ce0d728416e617e4fb1fe # v1
         with:
           architecture: x64
         if: runner.os == 'Windows' && matrix.architecture == 'AMD64'
-      - uses: bus1/cabuild/action/msdevshell@v1
+      - uses: bus1/cabuild/action/msdevshell@06ea2833eef61e9b0d0ce0d728416e617e4fb1fe # v1
         with:
           architecture: x86
         if: runner.os == 'Windows' && matrix.architecture == 'x86'
@@ -97,7 +97,7 @@ jobs:
           merge-multiple: true
           path: dist
       - name: Publish package distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with:
           packages-dir: dist
           glob-pattern: ${{ matrix.pattern }}
