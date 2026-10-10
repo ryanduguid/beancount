@@ -55,7 +55,8 @@ postings to non-income accounts is below tolerance.
 An unpriced acquisition can be valued at cost when its cost date matches the
 transaction date, it cannot reduce the account's holdings and it has no opposing
 posting in the same commodity. Historical cost carryovers, round trips and
-uncertain inventory histories still require prices on every cost posting.
+uncertain inventory histories still require prices on every cost posting. Matching
+dates do not distinguish unmarked historical carryovers from new acquisitions.
 
 This provides yet another level of verification and allows you to elide the
 income amounts, knowing that the price is there to provide an extra level of
@@ -161,6 +162,7 @@ def validate_sell_gains(entries, options_map):
         # expenses legs.
         total_price = inventory.Inventory()
         total_proceeds = inventory.Inventory()
+        price_currencies = set()
         for posting in entry.postings:
             # If the posting is held at cost, add the priced value to the balance.
             if posting.cost is not None:
@@ -170,6 +172,7 @@ def validate_sell_gains(entries, options_map):
                     else amount.Amount(posting.cost.number, posting.cost.currency)
                 )
                 total_price.add_amount(amount.mul(price, -posting.units.number))
+                price_currencies.add(price.currency)
             else:
                 # Otherwise, use the weight and ignore postings to Income accounts.
                 atype = account_types.get_account_type(posting.account)
@@ -179,6 +182,10 @@ def validate_sell_gains(entries, options_map):
         # Compare inventories, currency by currency.
         dict_price = {pos.units.currency: pos.units.number for pos in total_price}
         dict_proceeds = {pos.units.currency: pos.units.number for pos in total_proceeds}
+        if not fully_priced:
+            # Keep quoted currencies whose expected values cancel to zero.
+            for currency in price_currencies:
+                dict_price.setdefault(currency, ZERO)
 
         tolerances = interpolate.infer_tolerances(entry.postings, options_map)
         invalid = False

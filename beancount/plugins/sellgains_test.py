@@ -198,6 +198,32 @@ class TestSellGains(unittest.TestCase):
                     errors,
                 )
 
+    def test_commodity_exchange_zero_net_tolerance(self):
+        for currency in ["USD", "CAD"]:
+            for cash in ["0.01", "0.02"]:
+                for price in ["", " @ 200.00 USD"]:
+                    with self.subTest(currency=currency, cash=cash, price=price):
+                        errors = (
+                            ()
+                            if currency == "USD" and cash == "0.01" and not price
+                            else (sellgains.SellGainsError,)
+                        )
+                        self.check_exchange(
+                            f"""
+                        2000-01-01 * "Buy"
+                          Assets:Old 1.00 OLD {{100.00 USD}}
+                          Assets:Cash -100.00 USD
+                        2000-01-02 * "Exchange with rounding"
+                          Assets:Old -1.00 OLD {{}} @ 200.00 USD
+                          Assets:New 1.00 NEW {{200.00 USD}}{price}
+                          Assets:Cash {cash} {currency}
+                          Income:Gains -100.00 USD
+                          Income:Gains -{cash} {currency}
+                        """,
+                            errors,
+                            'option "infer_tolerance_from_cost" "FALSE"\n',
+                        )
+
     def test_commodity_exchange_cost_tolerance(self):
         for infer_cost, errors in [("FALSE", (sellgains.SellGainsError,)), ("TRUE", ())]:
             with self.subTest(infer_cost=infer_cost):
