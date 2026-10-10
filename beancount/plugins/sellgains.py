@@ -52,6 +52,10 @@ In general terms, it does the following: For transactions with postings that
 have a cost and a price, it verifies that the sum of the positions on all
 postings to non-income accounts is below tolerance.
 
+An unpriced acquisition can be valued at cost when it cannot reduce the account's
+holdings and has no opposing posting in the same commodity. Transfers, round trips
+and uncertain inventory histories still require prices on every cost posting.
+
 This provides yet another level of verification and allows you to elide the
 income amounts, knowing that the price is there to provide an extra level of
 error-checking in case you enter a typo.
@@ -61,6 +65,7 @@ __copyright__ = "Copyright (C) 2015-2021, 2024-2026  Martin Blais"
 __license__ = "GNU GPLv2"
 
 import collections
+from decimal import Decimal
 
 from beancount.core import account_types
 from beancount.core import amount
@@ -69,6 +74,7 @@ from beancount.core import data
 from beancount.core import interpolate
 from beancount.core import inventory
 from beancount.core.number import ZERO
+from beancount.core.position import Cost
 from beancount.parser import options
 
 __plugins__ = ("validate_sell_gains",)
@@ -96,18 +102,57 @@ def validate_sell_gains(entries, options_map):
     proceed_types = set(
         [acc_types.assets, acc_types.liabilities, acc_types.equity, acc_types.expenses]
     )
+    balances = collections.defaultdict(inventory.Inventory)
+    incomplete_accounts = set()
 
     for entry in entries:
         if not isinstance(entry, data.Transaction):
             continue
 
-        # Find transactions whose lots at cost all have a price.
         postings_at_cost = [
             posting for posting in entry.postings if posting.cost is not None
         ]
-        if not postings_at_cost or not all(
+        fully_priced = postings_at_cost and all(
             posting.price is not None for posting in postings_at_cost
-        ):
+        )
+        tracked_postings = []
+        for posting in entry.postings:
+            if (
+                isinstance(posting.units, amount.Amount)
+                and isinstance(posting.units.number, Decimal)
+                and (
+                    posting.cost is None
+                    or (
+                        isinstance(posting.cost, Cost)
+                        and isinstance(posting.cost.number, Decimal)
+                    )
+                )
+            ):
+                tracked_postings.append(posting)
+            else:
+                incomplete_accounts.add(posting.account)
+
+        # Check acquisitions against the holdings before this transaction.
+        # shortcut: Skip opposing commodity legs until booking supplies reduction markers.
+        can_validate = fully_priced or (
+            postings_at_cost
+            and any(posting.price is not None for posting in postings_at_cost)
+            and len(tracked_postings) == len(entry.postings)
+            and all(
+                posting.account not in incomplete_accounts
+                and not balances[posting.account].is_reduced_by(posting.units)
+                and not any(
+                    other.units.currency == posting.units.currency
+                    and other.units.number * posting.units.number < ZERO
+                    for other in tracked_postings
+                )
+                for posting in postings_at_cost
+                if posting.price is None
+            )
+        )
+        for posting in tracked_postings:
+            balances[posting.account].add_position(posting)
+        if not can_validate:
             continue
 
         # Accumulate the total expected proceeds and the sum of the asset and
@@ -117,8 +162,11 @@ def validate_sell_gains(entries, options_map):
         for posting in entry.postings:
             # If the posting is held at cost, add the priced value to the balance.
             if posting.cost is not None:
-                assert posting.price is not None
-                price = posting.price
+                price = (
+                    posting.price
+                    if posting.price is not None
+                    else amount.Amount(posting.cost.number, posting.cost.currency)
+                )
                 total_price.add_amount(amount.mul(price, -posting.units.number))
             else:
                 # Otherwise, use the weight and ignore postings to Income accounts.
