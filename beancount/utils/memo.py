@@ -36,7 +36,7 @@ def memoize_recent_fileobj(function, cache_filename, expiration=None):
     def memoized(*args, **kw):
         # Encode the arguments, including a date string in order to invalidate
         # results over some time.
-        md5 = hashlib.md5()
+        md5 = hashlib.md5(usedforsecurity=False)
         md5.update(str(args).encode("utf-8"))
         md5.update(str(sorted(kw.items())).encode("utf-8"))
 
