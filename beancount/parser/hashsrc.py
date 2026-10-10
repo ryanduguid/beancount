@@ -36,7 +36,7 @@ def hash_parser_source_files():
       A string, the hexadecimal unique hash of relevant source code that should
       trigger a recompilation.
     """
-    md5 = hashlib.md5()
+    md5 = hashlib.md5(usedforsecurity=False)
     for filename in PARSER_SOURCE_FILES:
         fullname = path.join(path.dirname(__file__), filename)
         if not path.exists(fullname):
