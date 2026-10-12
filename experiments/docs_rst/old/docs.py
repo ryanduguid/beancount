@@ -48,7 +48,7 @@ class Cache:
         def __call__(self, *args, **kwargs):
             key = (self._name, args, sorted(kwargs.items()))
             pickled_key = pickle.dumps(key)
-            md5 = hashlib.md5()
+            md5 = hashlib.md5(usedforsecurity=False)
             md5.update(pickled_key)
             digest = md5.hexdigest()
             try:

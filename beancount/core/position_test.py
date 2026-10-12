@@ -199,6 +199,16 @@ class TestPosition(unittest.TestCase):
             Position(A("2.2 HOOL"), Cost(None, None, None, "78c3f7f1315b")), pos
         )
 
+    def test_from_string__with_empty_label(self):
+        pos = from_string('2.2 HOOL {""}')
+        self.assertEqual(Position(A("2.2 HOOL"), Cost(None, None, None, None)), pos)
+
+    def test_from_string__unterminated_label_fails_fast(self):
+        # A label regex with a nested quantifier backtracked catastrophically on
+        # unterminated labels; this must fail without pathological delay.
+        with self.assertRaises(ValueError):
+            from_string('2.2 HOOL {"' + "a" * 200 + "}")
+
     def test_from_string__with_compound_cost(self):
         pos = from_string("1.1 HOOL {500.00 # 11.00 USD}")
         self.assertEqual(Position(A("1.1 HOOL"), Cost(D("510.00"), "USD", None, None)), pos)

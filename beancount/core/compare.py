@@ -45,7 +45,7 @@ def stable_hash_namedtuple(
 
     """
     # Note: this routine is slow and would stand to be implemented in C.
-    hashobj = hashlib.md5()
+    hashobj = hashlib.md5(usedforsecurity=False)
     for attr_name, attr_value in zip(objtuple._fields, objtuple):
         if attr_name in ignore:
             continue
@@ -55,7 +55,7 @@ def stable_hash_namedtuple(
                 if isinstance(element, tuple):
                     subhashes.append(stable_hash_namedtuple(element, ignore))  # type: ignore[arg-type]
                 else:
-                    md5 = hashlib.md5()
+                    md5 = hashlib.md5(usedforsecurity=False)
                     md5.update(str(element).encode())
                     subhashes.append(md5.hexdigest())
             for subhash in sorted(subhashes):

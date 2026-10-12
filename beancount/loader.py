@@ -328,7 +328,7 @@ def compute_input_hash(filenames):
     Returns:
       A hexadecimal MD5 hash string of the input files' metadata.
     """
-    md5 = hashlib.md5()
+    md5 = hashlib.md5(usedforsecurity=False)
     for filename in sorted(filenames):
         md5.update(filename.encode("utf8"))
         if not path.exists(filename):
