@@ -4,15 +4,15 @@
 
 **Fork status**
 
-.. image:: https://app.codacy.com/project/badge/Grade/8a7cfa90867f47b6991b0eef314cc8c6?branch=master
+.. image:: https://img.shields.io/codacy/grade/8a7cfa90867f47b6991b0eef314cc8c6/master?style=flat&labelColor=000000
    :target: https://app.codacy.com/gh/ryanduguid/beancount/dashboard
    :alt: Fork code quality
 
-.. image:: https://github.com/ryanduguid/beancount/actions/workflows/linting.yaml/badge.svg?branch=master
+.. image:: https://img.shields.io/github/actions/workflow/status/ryanduguid/beancount/linting.yaml?branch=master&label=linting&style=flat&labelColor=000000
    :target: https://github.com/ryanduguid/beancount/actions/workflows/linting.yaml
    :alt: Fork linting
 
-.. image:: https://github.com/ryanduguid/beancount/actions/workflows/tests.yaml/badge.svg?branch=master
+.. image:: https://img.shields.io/github/actions/workflow/status/ryanduguid/beancount/tests.yaml?branch=master&label=tests&style=flat&labelColor=000000
    :target: https://github.com/ryanduguid/beancount/actions/workflows/tests.yaml
    :alt: Fork tests
 
